@@ -1,0 +1,75 @@
+%pyspark
+
+import pandas as pd
+from pandas import DataFrame
+
+import geopandas as gpd
+from geopandas import GeoDataFrame
+
+from shapely.geometry import Point
+
+import matplotlib
+import matplotlib.pylab as plt
+
+from pyspark.sql import HiveContext
+
+import StringIO
+
+def show(p):
+    img = StringIO.StringIO()
+    p.savefig(img, format='svg')
+    img.seek(0)
+    print "%html <div style='width:100%'>" + img.buf + "</div>"
+
+sqlContext = HiveContext(sc)
+
+summary_date = z.input('날짜')
+sql = """
+select s.kiwi_child_id,
+java_method('io.kiwiplus.kiwi.analytics.location.common.MySQLCipher', 'asDouble', l.latitude) latitude,
+java_method('io.kiwiplus.kiwi.analytics.location.common.MySQLCipher', 'asDouble', l.longitude) longitude
+from (
+	select kiwi_child_id, max(from_time) max_from_time
+	from kiwi.kiwi_child_location_log
+	where to_date(concat(year, '-', month, '-', day)) = '%s' and provider in ('gps', 'network') and latitude != '' and longitude != '' and latitude is not null and longitude is not null
+	group by kiwi_child_id
+) s
+join kiwi.kiwi_child_location_log l on l.kiwi_child_id = s.kiwi_child_id and s.max_from_time = l.from_time
+where to_date(concat(l.year, '-', l.month, '-', l.day)) = '%s'
+""" % (summary_date, summary_date)
+
+df = sqlContext.sql(sql).toPandas()
+
+geodata = gpd.GeoDataFrame.from_file('/home/aidenoh/kiwi_lab/shapes/CTPRVN/TL_SCCO_CTPRVN_UNICODE_4326.shp', encoding='utf-8')
+
+df = GeoDataFrame(df, crs={'init':'epsg:4326'})
+geometry = df.apply(lambda x: Point(float(x.longitude), float(x.latitude)), axis=1)
+df = df.set_geometry(geometry)
+
+gdf = gpd.sjoin(df, geodata, how='inner', op='within')
+
+
+summary = gdf.CTPRVN_CD.value_counts()
+summary = summary.reset_index()
+summary.columns = ('CTPRVN_CD', 'total')
+summary = summary.merge(geodata)
+
+summary['coords'] = summary['geometry'].apply(lambda x: x.representative_point().coords[:])
+summary['coords'] = [coords[0] for coords in summary['coords']]
+
+
+summary = GeoDataFrame(summary, crs={'init':'epsg:4326'})
+
+krfont = {'family' : 'unbatang', 'weight' : 'bold', 'size'   : 8}
+matplotlib.rc('font', **krfont)
+
+summary.plot(column='total', cmap='coolwarm')
+
+for idx, row in summary.iterrows():
+    plt.annotate(s=row.CTP_KOR_NM, xy=row.coords, horizontalalignment='center')
+
+sm = plt.cm.ScalarMappable(cmap='coolwarm', norm=plt.Normalize(vmin=summary.total.min(), vmax=summary.total.max()))
+sm._A = ()
+plt.colorbar(sm)
+
+show(plt)

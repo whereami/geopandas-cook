@@ -1,0 +1,14 @@
+%spark
+
+import java.text._
+
+val from_date = z.input("시작 날짜")
+val until_date = z.input("종료 날짜")
+
+var sql = "select to_date(from_time) summary_date, count(distinct kiwi_child_id) kiwi_child_count from kiwi.kiwi_child_location_log "
+sql += "where to_date(concat(year, '-', month, '-', day)) between '" + from_date + "' and '" + until_date + "' "
+sql += "group by to_date(from_time) order by to_date(from_time)"
+
+println(sql)
+
+z.show(sqlContext.sql(sql))

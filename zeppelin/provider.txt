@@ -1,0 +1,14 @@
+%spark
+import java.text._
+import java.util._
+
+val from_date = z.input("시작 날짜")
+val until_date = z.input("종료 날짜")
+
+var sql = "select date_format(from_time, 'yyyy-MM-dd HH') summary_time, provider, count(*) provider_count from kiwi.kiwi_child_location_log "
+sql += "where to_date(concat(year, '-', month, '-', day)) between '" + from_date + "' and  '"+ until_date + "' "
+sql += "group by date_format(from_time, 'yyyy-MM-dd HH'), provider order by date_format(from_time, 'yyyy-MM-dd HH'), provider"
+
+println(sql)
+
+z.show(sqlContext.sql(sql))
